@@ -10,3 +10,11 @@
 
 - scheduling_windows.R uses the taskscheduler app to run "tfgm_webscrape.R" once every minute. Use this if you are using a windows device. This file also contains code for merging outputs from "tfgm_webscrape.R".
 
+
+To run this code you will need:
+
+- The following R packages installed: taskscheduleR (if using windows), cronR (if using unix), tidyverse, httr, jsonlite, and lubridate.
+
+- To sign up to the tfgm API (https://developer.tfgm.com) and optain a subscription key. 
+
+- To change any non-relative path names to locations on your computer.
