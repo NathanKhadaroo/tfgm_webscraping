@@ -1,4 +1,5 @@
-# tfgm_webscraping
+# Webscraping scoot sensor data from tfgm API
+
  Contains code to scrape scoot sensor data from the tfgm API.
  
  This repo contains three R scripts:
