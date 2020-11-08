@@ -1,0 +1,298 @@
+---
+title: "Chorlton Climate Action Partnership"
+author: "Nathan Khadaroo-Mccheyne"
+output:
+  html_document:
+    df_print: paged
+    theme: united
+    highlight: tango
+    toc: yes
+    toc_depth: 3
+    toc_float:
+      collapsed: no
+      smooth_scroll: no
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(httr) # Tools for Working with URLs and HTTP, CRAN v1.4.2     
+library(jsonlite) # A Simple and Robust JSON Parser and Generator for R, CRAN v1.7.1 
+library(tidyverse) # Easily Install and Load the 'Tidyverse', CRAN v1.3.0
+library(cronR) # Schedule R Scripts and Processes with the 'cron' Job Scheduler, CRAN v0.4.2
+library(osmdata) # Import 'OpenStreetMap' Data as Simple Features or Spatial Objects, CRAN v0.1.4
+library(sf) # Simple Features for R, CRAN v0.9-6 # Simple Features for R, CRAN v0.9-6
+```
+
+# Motivations:
+
+## Scalability:
+
+One of the key outcomes outlined in the  [CCAP document](TfGM_Data/CCAP One pager.docx) one is to develop a "know-how to handle larger scale project"
+
+I expect that R should be fine for the kinds of tasks we are doing here, even if the project were to be vastly scaled up.
+
+## Transparency:
+
+Everything should be as transparent as possible. And as much of the code as possible should be easily re-usable by the community. Setting up a project website via workflowR is a pretty simple way of ensuring this.
+
+# Deliverables:
+
+- Data for communities workshop (DATE).
+- A workflowR powered website with all the analyses.
+- Create a meta data file for TGFM to put on their api website, so people who want to use the data in teh future don't have to jump through the same loops as we did.
+- Create the software for the project to be scaled up.  
+
+# Tasks for Nathan:
+
+- Finalize code for scraping scoot data
+- Confirm the meaning of the extracted variables using the Siemens document, query TFGM for any uncertainty
+- Create github repository, ideally with a workflowR website.
+
+# Need to know:
+
+## Data information:
+
+#### Understanding the scoot data:
+
+I've read through the handbook provided, however ultimately I am still in the dark about the variables I have scraped, the handbook provides info on variables but these are not the same as those provided by the API. 
+
+I also found [this webinar](https://www.youtube.com/watch?v=rFJkc1tJvmA) handy.
+
+#### Air quality data:
+
+- What kind of data to expect Air Quality data from fixed and mobile air quality units?
+
+- Is there any documentation available?
+
+- Data will likely be collected 1st Jan 2021 to 31st December 2021
+
+- My understanding is that there is budget for two units. Where will they be placed?
+
+- Are their other sources of air quality data we can use.
+
+#### Traffic survey:
+
+- What kind of data is being collected here?
+
+- When will data collection take place?
+
+- Will we have any information on participants
+
+- Are there alternative ways of getting similar data. For eg I've seen papers using neural nets on camera data.
+
+#### Informative priors from similar previous projects:
+
+My intuition is that informative prior information could be found to improve some of the modeling.
+
+IIRC Caroline has worked on the Britain Breathing project.
+
+## Modelling:
+
+What exactly are we modeling here?
+
+Presumably the effect of traffic on air quality. I will have a look for existing studies on this relationship to see if there are any good examples to follow.
+
+I have also talked about using this data for the pic n mix session but I'm not sure how viable a tidymodels approach would be here though the infer style workflows could in handy.
+
+
+# Scraping the scoot data:
+
+I use 5 packages to scrape the scoot data.
+
+```{r scrape_packages, eval = FALSE}
+library(httr) # Tools for Working with URLs and HTTP, CRAN v1.4.2     
+library(jsonlite) # A Simple and Robust JSON Parser and Generator for R, CRAN v1.7.1 
+library(tidyverse) # Easily Install and Load the 'Tidyverse', CRAN v1.3.0
+library(lubridate) # Make Dealing with Dates a Little Easier, CRAN v1.7.9
+library(cronR) # Schedule R Scripts and Processes with the 'cron' Job Scheduler, CRAN v0.4.2
+```
+
+The first step is to extract the raw data using httr::GET().
+
+```{r scraping}
+
+raw <- GET("https://api.tfgm.com/odata/ScootLoops?$expand=EndLocation,StartLocation,ScootDetails&$top=4000",
+           add_headers("Ocp-Apim-Subscription-Key"= "972db18168b84d30a2db59901c9162ce"))
+raw
+
+```
+
+Then clean the data using tidyverse functions:
+
+```{r i_hate_json, message = FALSE}
+
+junction_data <- fromJSON(rawToChar(raw$content))$value %>%
+  filter(str_detect(SCN, "^N22161"))%>%
+  unnest_wider(ScootDetails, names_repair = "unique") %>%
+  mutate(start_coords = StartLocation$LocationSpatial$Geography$WellKnownText,
+         start_lat = as.numeric(str_sub(start_coords, start = 8, end = 24)),
+         start_long = as.numeric(str_sub(start_coords, start = 26, end = 41)),
+         end_coords = EndLocation$LocationSpatial$Geography$WellKnownText,
+         end_lat = as.numeric(str_sub(end_coords, start = 8, end = 24)),
+         end_long = as.numeric(str_sub(end_coords, start = 26, end = 41)),
+         time = lubridate::ymd_hms(LastUpdated))%>%
+  janitor::clean_names()%>%
+  select(scoot_name = scn_2,
+         description,
+         last_updated,
+         time,
+         congestion_percentage,
+         current_flow,
+         average_speed,
+         link_status,
+         link_travel_time,
+         start_lat,
+         start_long,
+         end_lat,
+         end_long) %>%
+  as_tibble()
+
+junction_data
+
+```
+# Plotting the scoot locations:
+
+We can check these are the right scoots by mapping them using the following packages:
+
+```{r gis_packages, eval = FALSE}
+library(osmdata) # Import 'OpenStreetMap' Data as Simple Features or Spatial Objects, CRAN v0.1.4
+library(sf) # Simple Features for R, CRAN v0.9-6 # Simple Features for R, CRAN v0.9-6
+```
+
+First I scrape Open Street map data for Chorlton ( I initially queried for the Chorlton bounding box but it appears osm has this wrong? Either that or a projection issue) :
+
+```{r getting_osm_features }
+
+streets <- getbb("Manchester England")%>%
+  opq()%>%
+  add_osm_feature(key = "highway", 
+                  value = c("motorway", "primary", 
+                            "secondary", "tertiary")) %>%
+  osmdata_sf()
+
+small_streets <- getbb("Manchester England")%>%
+  opq()%>%
+  add_osm_feature(key = "highway", 
+                  value = c("residential", "living_street",
+                            "unclassified",
+                            "service", "footway")) %>%
+  osmdata_sf()
+
+river <- getbb("Manchester England")%>%
+  opq()%>%
+  add_osm_feature(key = "waterway", value = "river") %>%
+  osmdata_sf()
+```
+Plotting the scoot locations:
+
+```{r scoot_plot}
+df <- junction_data %>%
+  filter(scoot_name != 'N22161N')
+
+ggplot() +
+   geom_sf(data = river$osm_lines,
+          inherit.aes = FALSE,
+          color = "blue",
+          size = 1,
+          alpha = .5) +
+  geom_sf(data = streets$osm_lines,
+          inherit.aes = FALSE,
+          color = "steelblue",
+          size = .4,
+          alpha = .8) +
+   geom_sf(data = small_streets$osm_lines,
+          inherit.aes = FALSE,
+          color = "black",
+          size = .4,
+          alpha = .6) +
+  geom_point(data = df, 
+             aes(x = start_lat, y = start_long),
+             colour = "red")+
+  coord_sf(xlim = c(-2.33, -2.23), 
+           ylim = c(53.4, 53.48),
+           expand = FALSE) +
+  xlab("Latitude") +
+  ylab("Longitude")
+  
+```
+
+Alternatively, the scoot locations can be visualized using leaflet. This allows more information to be displayed. A an example, if you hover over the markers the name of the scoot is displayed, and if you click on the marker you are shown information on the scoot name, the average speed recorded, congestion percentage, and current flow :
+
+```{r leaflet_scoot_plot, message= FALSE, warning = FALSE}
+library(leaflet) # Create Interactive Web Maps with the JavaScript 'Leaflet' Library, CRAN v2.0.3
+
+leaflet(data = junction_data) %>%
+  addTiles() %>%
+  addMarkers(lat= junction_data$start_long, lng= junction_data$start_lat,
+             label = junction_data$scoot_name,
+             popup = paste("Scoot Name:", junction_data$scoot_name,"<br>",
+                           "Average Speed:", junction_data$average_speed,"<br>",
+                           "Congestion Percentage:",junction_data$congestion_percentage,"<br>",
+                           "Current Flow:",junction_data$current_flow))
+
+```
+
+The next step is to set up a way of having this information scraped at regular intervals using cronR.
+
+```{r, eval = FALSE}
+
+```
+
+# Appendices:
+
+## Appendix 1: CCAP One Pager
+
+
+The partnership has secured £208k in development funds to create a small but effective locality-based start-up project in the community whose aims are to create a huge permanent shift in the way people move around the two Manchester wards of Chorlton & Chorlton Park (30,000 residents), moving away from car dependency towards more sustainable and active travel, in particular increased walking and cycling; and enhancing the local neighbourhood in favour of people, so this change in travel behaviour becomes a self-perpetuating transition.
+
+The Covid19 pandemic, and associated lockdown restrictions, means this shift in transport habits is already here on a temporary basis - with the neighbourhood experiencing cleaner, safer, quieter streets; this project is a timely grassroots intervention to help ensure as much as possible can be maintained.
+
+This project should be seen as a ‘kickstarter’ to work of greater ambition, scale and impact; and ideally read in the context of the Chorlton Climate Action Partnership’s initial £2.5m ‘Green Grow Walk Ride Roll’ proposal. 
+
+The main activity of the project will be taking place between January and December 2021 with project set up and reporting in a three month period either side of those dates.
+
+The project  has four main goals:
+
+1. To understand and baseline behavioural and pollution & emissions data in Chorlton & Chorlton Park wards
+
+2. To carry out community engagement to understand and then solidify the conditions for permanent change in travel and related behaviour, building on both the energy of mutual aid and changes in mobility during Covid-19 
+
+3. To create a simple ‘starter’ partnership from which greater good can flow - both in terms of the capacity and know-how to handle larger scale projects, awareness of further funding streams to facilitate those projects and to move WalkRideGM into the position of being able to become a funded community body
+
+4. To carry out tangible project work in the community - to build on the transformation of the area’s streets during lockdown & appetite for further action especially against a backdrop of high levels of climate concern, and deliver visible progress via three demonstrator projects which will be picked for their ability to cast wider influence in the community and ‘show the way’ for further change.
+
+Over the course of this period Open Data Manchester will be working with partners and the community to collect, analyse and display data relevant to the projects aims. Data collected will be:
+
+- Air Quality data from fixed and mobile air quality units measuring -  NO2, NO , O3, PM1 , PM2.5 & PM10
+
+- Data relating to traffic flow from TfGM SCOOT system accessed through open data APIs.
+
+- Traffic surveys undertaken by a cohort of community traffic surveyors throughout the project.
+
+The data will be used to understand traffic flow and patterns within Chorlton, the relationship between traffic and air quality and estimated emissions from vehicle types.
+
+**Partnership:** 
+
+Chorlton Climate Action Partnership is a partnership between WalkRideGM, Groundwork Trust, Sustrans and Open Data Manchester CIC overseen by a board of community representatives. The project is yet to be named by the Community Board and will be delivered with the support of two full-time project/community workers from a retail premises in the centre of Chorlton.
+
+## Appendix 2: Chorlton Map
+
+![](TfGM_Data/Chorlton Map-page-001.jpg)
+
+## Appendix 3: Scoot map
+
+![](TfGM_Data/RCW - chorlton-page-002.jpg)
+
+## Appendix 4: Session info
+```{r}
+
+sessionInfo()
+
+```
+
+
+
+
+

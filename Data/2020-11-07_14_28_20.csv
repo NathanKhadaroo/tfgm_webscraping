@@ -1,0 +1,5 @@
+scoot_name,description,time,congestion_percentage,current_flow,average_speed,link_travel_time,start_lat,start_long,end_lat,end_long
+N22161B,"Barlow Moor Rd southbound approach at junction of Wilbraham Rd/Barlow Moor Rd, Manchester.",2020-11-07T13:28:20Z,0,40,37,50,-2.27825343856989,53.4438719984499,-2.27728350649639,53.4426521556298
+N22161G,"Wilbraham Rd westbound approach at junction of Wilbraham Rd/Barlow Moor Rd, Manchester.",2020-11-07T13:28:20Z,4,43,19,47,-2.27492378120811,53.4424322149984,-2.27701353136077,53.4424621817972
+N22161J,"Barlow Moor Rd northbound approach at junction of Wilbraham Rd/Barlow Moor Rd, Manchester.",2020-11-07T13:28:20Z,9,63,12,38,-2.27601359890321,53.4411423511573,-2.27716350975888,53.4423721902469
+N22161L,"Wilbraham Rd eastbound approach at junction of Wilbraham Rd/Barlow Moor Rd, Manchester.",2020-11-07T13:28:20Z,22,43,12,39,-2.28041312893448,53.4426121158996,-2.27740348730315,53.4425321680319

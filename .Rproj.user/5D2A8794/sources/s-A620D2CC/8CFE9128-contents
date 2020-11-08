@@ -1,0 +1,51 @@
+
+# Load packages: ----------------------------------------------------------
+
+library(httr) # Tools for Working with URLs and HTTP, CRAN v1.4.2     
+library(jsonlite) # A Simple and Robust JSON Parser and Generator for R, CRAN v1.7.1 
+library(tidyverse) # Easily Install and Load the 'Tidyverse', CRAN v1.3.0
+library(lubridate) # Make Dealing with Dates a Little Easier, CRAN v1.7.9
+
+# Get the raw data from the TFGM API: -------------------------------------
+
+raw <- GET("https://api.tfgm.com/odata/ScootLoops?$expand=EndLocation,StartLocation,ScootDetails&$top=4000",
+           add_headers("Ocp-Apim-Subscription-Key"= "972db18168b84d30a2db59901c9162ce"))
+
+
+# Transform the data: -----------------------------------------------------
+
+junction_data <- fromJSON(rawToChar(raw$content))$value %>%
+  filter(str_detect(SCN, "^N22161"),
+         SCN != 'N22161N')%>%
+  unnest_wider(ScootDetails, names_repair = "unique") %>%
+  mutate(start_coords = StartLocation$LocationSpatial$Geography$WellKnownText,
+         start_lat = as.numeric(str_sub(start_coords, start = 8, end = 24)),
+         start_long = as.numeric(str_sub(start_coords, start = 26, end = 41)),
+         end_coords = EndLocation$LocationSpatial$Geography$WellKnownText,
+         end_lat = as.numeric(str_sub(end_coords, start = 8, end = 24)),
+         end_long = as.numeric(str_sub(end_coords, start = 26, end = 41)),
+         time = now(tz = "GB"))%>%
+  janitor::clean_names()%>%
+  select(scoot_name = scn_2,
+         description,
+         time,
+         congestion_percentage,
+         current_flow,
+         average_speed,
+         link_travel_time,
+         start_lat,
+         start_long,
+         end_lat,
+         end_long) %>%
+  as_tibble()
+
+# Save the output as csv: -------------------------------------------------
+
+time <- gsub(" |:","_",Sys.time())
+
+junction_data %>%
+  write_csv(
+    paste0("/Users/nathankhadaroo/Desktop/PhD/CCAP_project/Data/",time,".csv")
+    )
+
+sessionInfo()
