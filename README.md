@@ -1,4 +1,4 @@
-# Webscraping scoot sensor data from tfgm API
+# Webscraping scoot sensor data from the tfgm API:
 
  Contains code to scrape scoot sensor data from the tfgm API.
  
